@@ -1285,6 +1285,10 @@ class EventReader:
         self._selector = None
         self._loop = None
 
+    async def __aiter__(self):
+        while True:
+            yield await self.aread()
+
     def __enter__(self):
         return self
 
@@ -1353,7 +1357,7 @@ class FrameReader:
             raise V4L2Error("Cannot use async frame reader on blocking device")
         self._selector = select.epoll()
         self._loop = asyncio.get_event_loop()
-        self._loop.add_reader(self._selector.fileno(), self._on_aread)
+        self._loop.add_reader(self._selector.fileno(), self._on_event)
         self._selector.register(self.device.fileno(), select.POLLIN)
         return self
 
@@ -1370,7 +1374,7 @@ class FrameReader:
     def __exit__(self, exc_type, exc_value, tb):
         pass
 
-    def _on_aread(self):
+    def _on_event(self):
         task = self._task
         awaited = task and not task.done()
 
