@@ -376,11 +376,22 @@ def read_info(fd):
 def query_buffer(
     fd, buffer_type: BufferType, memory: Memory, index: int
 ) -> raw.v4l2_buffer:
-    buff = raw.v4l2_buffer()
-    buff.type = buffer_type
-    buff.memory = memory
-    buff.index = index
-    buff.reserved = 0
+    if buffer_type == BufferType.VIDEO_CAPTURE_MPLANE:
+        buff = raw.v4l2_buffer()
+        buff.type = buffer_type
+        buff.memory = memory
+        buff.index = index
+
+        plane = raw.v4l2_plane()
+        buff.m.planes = ctypes.pointer(plane)
+        buff.length = 1
+        buff.flags = raw.V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+    else:
+        buff = raw.v4l2_buffer()
+        buff.type = buffer_type
+        buff.memory = memory
+        buff.index = index
+        buff.reserved = 0
     ioctl(fd, IOC.QUERYBUF, buff)
     return buff
 
@@ -393,6 +404,11 @@ def enqueue_buffer(
     buff.memory = memory
     buff.index = index
     buff.reserved = 0
+
+    if buffer_type == BufferType.VIDEO_CAPTURE_MPLANE:
+        plane = raw.v4l2_plane()
+        buff.m.planes = ctypes.pointer(plane)
+        buff.length = 1
     ioctl(fd, IOC.QBUF, buff)
     return buff
 
@@ -403,6 +419,12 @@ def dequeue_buffer(fd, buffer_type: BufferType, memory: Memory) -> raw.v4l2_buff
     buff.memory = memory
     buff.index = 0
     buff.reserved = 0
+
+    if buffer_type == BufferType.VIDEO_CAPTURE_MPLANE:
+        plane = raw.v4l2_plane()
+        buff.m.planes = ctypes.pointer(plane)
+        buff.length = 1
+
     ioctl(fd, IOC.DQBUF, buff)
     return buff
 
@@ -437,14 +459,31 @@ def set_format(
     f = raw.v4l2_format()
     if isinstance(pixel_format, str):
         pixel_format = raw.v4l2_fourcc(*pixel_format.upper())
-    f.type = buffer_type
-    f.fmt.pix.pixelformat = pixel_format
-    f.fmt.pix.field = Field.ANY
-    f.fmt.pix.width = width
-    f.fmt.pix.height = height
-    f.fmt.pix.bytesperline = 0
-    f.fmt.pix.sizeimage = 0
+
+    if buffer_type == BufferType.VIDEO_CAPTURE_MPLANE:
+        f.type = buffer_type
+        f.fmt.mpix.pixelformat = pixel_format
+        f.fmt.mpix.field = Field.NONE
+
+        plane_fmt = raw.v4l2_plane_pix_format * raw.VIDEO_MAX_PLANES
+        planes = [
+                     raw.v4l2_plane_pix_format()
+                 ] * raw.VIDEO_MAX_PLANES
+        f.fmt.pix.plane_fmt = plane_fmt(*planes)
+        f.fmt.pix.num_planes = 1
+        f.fmt.pix.width = width
+        f.fmt.pix.height = height
+        f.fmt.pix.sizeimage = 0
+    else:
+        f.type = buffer_type
+        f.fmt.pix.pixelformat = pixel_format
+        f.fmt.pix.field = Field.ANY
+        f.fmt.pix.width = width
+        f.fmt.pix.height = height
+        f.fmt.pix.bytesperline = 0
+        f.fmt.pix.sizeimage = 0
     return ioctl(fd, IOC.S_FMT, f)
+
 
 
 def get_raw_format(fd, buffer_type):
@@ -596,6 +635,8 @@ def create_buffers(
 
 
 def mmap_from_buffer(fd, buff: raw.v4l2_buffer) -> mmap.mmap:
+    if buff.type == BufferType.VIDEO_CAPTURE_MPLANE:
+        return mem_map(fd, buff.m.planes[0].length, offset=buff.m.planes[0].m.offset)
     return mem_map(fd, buff.length, offset=buff.m.offset)
 
 
@@ -1423,8 +1464,9 @@ class Frame:
 
 
 class VideoCapture(BufferManager):
-    def __init__(self, device: Device, size: int = 2):
-        super().__init__(device, BufferType.VIDEO_CAPTURE, size)
+    def __init__(self, device: Device, size: int = 2,
+                 buffer_type=BufferType.VIDEO_CAPTURE):
+        super().__init__(device, buffer_type, size)
         self.buffer = None
 
     def __enter__(self):
@@ -1516,6 +1558,8 @@ class MemoryMap(ReentrantContextManager):
 
     def raw_grab(self):
         with self.reader as buff:
+            if buff.type == BufferType.VIDEO_CAPTURE_MPLANE:
+                return self.buffers[buff.index][: buff.m.planes[0].bytesused], buff
             return self.buffers[buff.index][: buff.bytesused], buff
 
     def raw_read(self):

@@ -76,7 +76,7 @@ class timeval(ctypes.Structure):
 
 
 VIDEO_MAX_FRAME = 32
-
+VIDEO_MAX_PLANES = 8
 
 VID_TYPE_CAPTURE = 1
 VID_TYPE_TUNER = 2
@@ -370,6 +370,29 @@ class v4l2_pix_format(ctypes.Structure):
         ("sizeimage", ctypes.c_uint32),
         ("colorspace", v4l2_colorspace),
         ("priv", ctypes.c_uint32),
+    ]
+
+class v4l2_plane_pix_format(ctypes.Structure):
+    _fields_ = [
+        ("sizeimage", ctypes.c_uint32),
+        ("bytesperline", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint16 * 6)
+    ]
+
+class v4l2_pix_format_mplane(ctypes.Structure):
+    _fields_ = [
+        ("width", ctypes.c_uint32),
+        ("height", ctypes.c_uint32),
+        ("pixelformat", ctypes.c_uint32),
+        ("field", v4l2_field),
+        ("colorspace", v4l2_colorspace),
+        ("plane_fmt", v4l2_plane_pix_format * VIDEO_MAX_PLANES),
+        ("num_planes", ctypes.c_uint8),
+        ("flags", ctypes.c_uint8),
+        ("encoding", ctypes.c_uint8),
+        ("quantization", ctypes.c_uint8),
+        ("xfer_func", ctypes.c_uint8),
+        ("reserved", ctypes.c_uint8 * 7)
     ]
 
 
@@ -679,12 +702,29 @@ class v4l2_requestbuffers(ctypes.Structure):
     ]
 
 
+class v4l2_plane(ctypes.Structure):
+    class _u(ctypes.Union):
+        _fields_ = [
+            ("offset", ctypes.c_uint32),  # V4L2_MEMORY_MMAP
+            ("userptr", ctypes.c_ulong),  # V4L2_MEMORY_USERPTR
+            ("fd", ctypes.c_int),  # V4L2_MEMORY_DMABUF
+        ]
+
+    _fields_ = [
+        ("bytesused", ctypes.c_uint32),
+        ("length", ctypes.c_uint32),
+        ("m", _u),
+        ("data_offset", ctypes.c_uint32),
+        ("__u32", ctypes.c_uint32 * 11),
+    ]
+
+
 class v4l2_buffer(ctypes.Structure):
     class _u(ctypes.Union):
         _fields_ = [
             ("offset", ctypes.c_uint32),  # V4L2_MEMORY_MMAP
             ("userptr", ctypes.c_ulong),  # V4L2_MEMORY_USERPTR
-            # TODO: ("planes", ctypes.POINTER(v4l2_plane)),
+            ("planes", ctypes.POINTER(v4l2_plane)),
             ("fd", ctypes.c_int),  # V4L2_MEMORY_DMABUF
         ]
 
@@ -1999,6 +2039,7 @@ class v4l2_format(ctypes.Structure):
     class _u(ctypes.Union):
         _fields_ = [
             ("pix", v4l2_pix_format),
+            ("mpix", v4l2_pix_format_mplane),
             ("win", v4l2_window),
             ("vbi", v4l2_vbi_format),
             ("sliced", v4l2_sliced_vbi_format),
