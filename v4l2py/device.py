@@ -64,6 +64,10 @@ SelectionTarget = _enum("SelectionTarget", "V4L2_SEL_TGT_")
 Priority = _enum("Priority", "V4L2_PRIORITY_")
 TimeCode = _enum("TimeCode", "V4L2_TC_TYPE_")
 TimeFlag = _enum("TimeFlag", "V4L2_TC_FLAG_", klass=enum.IntFlag)
+EventType = _enum("EventType", "V4L2_EVENT_")
+EventSubscriptionFlag = _enum(
+    "EventSubscriptionFlag", "V4L2_EVENT_SUB_FL_", klass=enum.IntFlag
+)
 
 
 def human_pixel_format(ifmt):
@@ -173,6 +177,9 @@ def iter_read(fd, ioc, indexed_struct, start=0, stop=128, step=1, ignore_einval=
                     continue
                 else:
                     break
+            # ignore if device does not support call
+            elif error.errno == errno.ENOTTY:
+                break
             else:
                 raise
 
@@ -617,6 +624,33 @@ def set_priority(fd, priority: Priority):
     ioctl(fd, IOC.S_PRIORITY, priority)
 
 
+def subscribe_event(
+    fd,
+    event_type: EventType = EventType.ALL,
+    id: int = 0,
+    flags: EventSubscriptionFlag = 0,
+):
+    sub = raw.v4l2_event_subscription()
+    sub.type = event_type
+    sub.id = id
+    sub.flags = flags
+    ioctl(fd, IOC.SUBSCRIBE_EVENT, sub)
+
+
+def unsubscribe_event(fd, event_type: EventType = EventType.ALL, id: int = 0):
+    sub = raw.v4l2_event_subscription()
+    sub.type = event_type
+    sub.id = id
+    ioctl(fd, IOC.UNSUBSCRIBE_EVENT, sub)
+
+
+def deque_event(fd):
+    event = raw.v4l2_event()
+    ioctl(fd, IOC.DQEVENT, event)
+    return event
+
+
+
 # Helpers
 
 
@@ -682,6 +716,7 @@ class Device(ReentrantContextManager):
         self.info = None
         self.controls = None
         self.io = io
+        self.legacy_controls = legacy_controls
         if isinstance(name_or_file, (str, pathlib.Path)):
             filename = pathlib.Path(name_or_file)
             self._read_write = read_write
@@ -700,7 +735,6 @@ class Device(ReentrantContextManager):
         self.log = log.getChild(filename.stem)
         self.filename = filename
         self.index = device_number(filename)
-        self.legacy_controls = legacy_controls
 
     def __repr__(self):
         return f"<{type(self).__name__} name={self.filename}, closed={self.closed}>"
@@ -823,6 +857,20 @@ class Device(ReentrantContextManager):
 
     def write(self, data: bytes) -> None:
         self._fobj.write(data)
+
+    def subscribe_event(
+        self,
+        event_type: EventType = EventType.ALL,
+        id: int = 0,
+        flags: EventSubscriptionFlag = 0,
+    ):
+        return subscribe_event(self.fileno(), event_type, id, flags)
+
+    def unsubscribe_event(self, event_type: EventType = EventType.ALL, id: int = 0):
+        return unsubscribe_event(self.fileno(), event_type, id)
+
+    def deque_event(self):
+        return deque_event(self.fileno())
 
 
 class Controls(dict):
