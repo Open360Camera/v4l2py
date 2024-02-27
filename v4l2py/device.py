@@ -253,7 +253,11 @@ def frame_sizes(fd, pixel_formats):
 
 def read_capabilities(fd):
     caps = raw.v4l2_capability()
-    ioctl(fd, IOC.QUERYCAP, caps)
+
+    try:
+        ioctl(fd, IOC.QUERYCAP, caps)
+    except OSError:
+        pass
     return caps
 
 
