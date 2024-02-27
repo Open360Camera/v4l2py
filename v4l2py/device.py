@@ -1268,12 +1268,12 @@ class MenuControl(BaseMonoControl, UserDict):
 
         if self.type == ControlType.MENU:
             self.data = {
-                item.index: item.name.decode()
+                item.index: item.data.name.decode()
                 for item in iter_read_menu(self.device._fobj, self)
             }
         elif self.type == ControlType.INTEGER_MENU:
             self.data = {
-                item.index: int(item.name)
+                item.index: int(item.data.value)
                 for item in iter_read_menu(self.device._fobj, self)
             }
         else:
@@ -1299,7 +1299,7 @@ class LegacyMenuItem:
     def __init__(self, item: raw.v4l2_querymenu):
         self.item = item
         self.index = item.index
-        self.name = item.name.decode()
+        self.name = item.data.name.decode()
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} index={self.index} name={self.name}>"
