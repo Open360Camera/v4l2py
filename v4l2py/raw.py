@@ -1286,7 +1286,8 @@ class v4l2_querymenu(ctypes.Structure):
     class _u(ctypes.Union):
         _fields_ = [
             ("name", ctypes.c_char * 32),
-            ("value", ctypes.c_int64),
+            # fixme: this must be ctypes.c_int64
+            ("value", ctypes.c_int32),
         ]
 
     _fields_ = [
