@@ -1001,7 +1001,11 @@ class BaseControl:
         return ""
 
     def _get_control(self):
-        value = get_control(self.device, self.id)
+        try:
+            value = get_control(self.device, self.id)
+        except OSError:
+            value = 0
+
         return value
 
     def _set_control(self, value):
